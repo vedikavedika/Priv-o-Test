@@ -172,18 +172,34 @@ export const ExamPortal: React.FC<ExamPortalProps> = ({
 
       setStatusMessage('Dispatching anonymous submission to network relayer...');
 
-      // 5. Relayer Dispatch
+      // 5. Relayer Dispatch via HTTP POST request
       try {
-        await fetch('http://127.0.0.1:3099/submit', {
+        const relayerUrl = (import.meta as any).env?.VITE_RELAYER_URL || 'http://localhost:5000/api/relay-submission';
+        const relayerPayload = {
+          merkleTreeDepth: generatedProof.merkleTreeDepth || 12,
+          merkleTreeRoot: generatedProof.merkleTreeRoot,
+          nullifier: nullifierHash,
+          answerHash: rawAnswerHash,
+          scope: examId,
+          points: generatedProof.points || [0, 0, 0, 0, 0, 0, 0, 0],
+          proof: generatedProof,
+          nullifierHash,
+        };
+
+        const res = await fetch(relayerUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            proof: generatedProof,
-            nullifierHash,
-            merkleTreeRoot: generatedProof.merkleTreeRoot,
-            answerHash: rawAnswerHash,
-          }),
+          body: JSON.stringify(relayerPayload),
         });
+
+        if (!res.ok) {
+          // Fallback to local test relayer port 3099 if port 5000 is not running
+          await fetch('http://127.0.0.1:3099/submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(relayerPayload),
+          });
+        }
       } catch (relayerErr) {
         console.warn('Relayer server offline. Storing submission locally for score evaluation.', relayerErr);
       }
