@@ -6,9 +6,10 @@ import { ArrowRight, Check, FileCheck2, Fingerprint, GitBranch, Loader2, LockKey
 interface Step3ProofGenerationProps {
   studentEmail: string;
   identity: Identity;
+  onProceedToExam?: () => void;
 }
 
-export const Step3ProofGeneration: React.FC<Step3ProofGenerationProps> = ({ studentEmail, identity }) => {
+export const Step3ProofGeneration: React.FC<Step3ProofGenerationProps> = ({ studentEmail, identity, onProceedToExam }) => {
   const [isJoined, setIsJoined] = useState(false);
   const [isProving, setIsProving] = useState(false);
   const [proof, setProof] = useState<SemaphoreProof | null>(null);
@@ -31,17 +32,16 @@ export const Step3ProofGeneration: React.FC<Step3ProofGenerationProps> = ({ stud
       const commitmentsList = rawLeaves.map((leaf) => BigInt(leaf));
       const freshGroup = new Group(commitmentsList);
       const generatedProof = await generateProof(
-  identity,
-  freshGroup,
-  '0',
-  'CS101-EXAM-2026',
-  12,
-  {
-    zkey: '/artifacts/semaphore-12.zkey',
-    wasm: '/artifacts/semaphore-12.wasm'
-  }
-);
-
+        identity,
+        freshGroup,
+        '0',
+        '101',
+        12,
+        {
+          zkey: '/artifacts/semaphore-12.zkey',
+          wasm: '/artifacts/semaphore-12.wasm'
+        }
+      );
 
       setProof(generatedProof);
     } catch (err: any) {
@@ -98,11 +98,21 @@ export const Step3ProofGeneration: React.FC<Step3ProofGenerationProps> = ({ stud
               <div className="result-header"><div className="result-title"><div className="result-icon"><Check size={18} /></div><div><strong>Membership proof generated</strong><span>Valid Semaphore proof • ready for verification</span></div></div><div className="valid-chip"><span className="status-dot" /> VALID</div></div>
               <div className="proof-grid">
                 <div className="proof-value"><span>Merkle tree root</span><code>{proof.merkleTreeRoot.toString()}</code></div>
-               <div className="proof-value">
-  <span>Nullifier</span>
-  <code>{proof.nullifier.toString()}</code>
-</div>
+                <div className="proof-value">
+                  <span>Nullifier</span>
+                  <code>{proof.nullifier.toString()}</code>
+                </div>
               </div>
+
+              {onProceedToExam && (
+                <div style={{ marginTop: '16px' }}>
+                  <button className="primary-button green-button" onClick={onProceedToExam} style={{ width: '100%', justifyContent: 'center' }}>
+                    <span>Enter Anonymous Exam Portal</span>
+                    <ArrowRight size={17} />
+                  </button>
+                </div>
+              )}
+
               <div className="result-foot"><ShieldCheck size={15} /><span>The proof establishes group membership without exposing your email or secret identity.</span></div>
             </div>
           )}

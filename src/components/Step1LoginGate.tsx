@@ -77,9 +77,20 @@ export const Step1LoginGate: React.FC<Step1LoginGateProps> = ({ onSuccess }) => 
       </form>
 
       <div className="demo-section">
-        <div className="demo-label">Demo accounts</div>
+        <div className="demo-label">Demo accounts (10 Enrolled Students)</div>
         <div className="demo-grid">
-          {['alice@university.edu', 'bob@university.edu'].map((account) => (
+          {[
+            'alice@university.edu',
+            'bob@university.edu',
+            'charlie@university.edu',
+            'diana@university.edu',
+            'ethan@university.edu',
+            'fiona@university.edu',
+            'george@university.edu',
+            'hannah@university.edu',
+            'ian@university.edu',
+            'julia@university.edu'
+          ].map((account) => (
             <button key={account} className="demo-account" onClick={() => handleQuickFill(account)} type="button">
               <span className="avatar">{account[0].toUpperCase()}</span>
               <span>{account.split('@')[0]}</span>
@@ -87,7 +98,7 @@ export const Step1LoginGate: React.FC<Step1LoginGateProps> = ({ onSuccess }) => 
             </button>
           ))}
         </div>
-        <p className="demo-hint">Demo password: <code>pass123</code></p>
+        <p className="demo-hint">Demo password for all accounts: <code>pass123</code></p>
       </div>
     </div>
   );

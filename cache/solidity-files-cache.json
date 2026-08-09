@@ -76,8 +76,8 @@
       ]
     },
     "C:\\Users\\bharg\\IITG.eth Hackathon\\Priv-o-Test\\contracts\\ExamSystem.sol": {
-      "lastModificationDate": 1786275598981,
-      "contentHash": "8320a603618c7d4bb1fe9e11fe2730cb",
+      "lastModificationDate": 1786279104080,
+      "contentHash": "66322bdc698e9a1c91bd163e83979fd7",
       "sourceName": "contracts/ExamSystem.sol",
       "solcConfig": {
         "version": "0.8.23",
@@ -103,7 +103,9 @@
           }
         }
       },
-      "imports": [],
+      "imports": [
+        "./ExamGroup.sol"
+      ],
       "versionPragmas": [
         "^0.8.23"
       ],

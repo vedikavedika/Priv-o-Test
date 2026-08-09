@@ -4,13 +4,16 @@ import { StudentRecord } from './studentDb.js';
 import { Step1LoginGate } from './components/Step1LoginGate.js';
 import { Step2Identity } from './components/Step2Identity.js';
 import { Step3ProofGeneration } from './components/Step3ProofGeneration.js';
-import { ArrowRight, Check, LockKeyhole, RotateCcw, ShieldCheck, Sparkles } from 'lucide-react';
+import { ExamPortal } from './components/ExamPortal.js';
+import { ScoreReveal } from './components/ScoreReveal.js';
+import { ArrowRight, Award, Check, FileText, LockKeyhole, RotateCcw, ShieldCheck, Sparkles } from 'lucide-react';
 import './styles.css';
 
 export function App() {
-  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [authenticatedStudent, setAuthenticatedStudent] = useState<Omit<StudentRecord, 'password' | 'hasRegistered'> | null>(null);
   const [identity, setIdentity] = useState<Identity | null>(null);
+  const [submissionData, setSubmissionData] = useState<{ nullifierHash: string; chosenAnswers: string[]; studentSalt: string } | null>(null);
 
   const handleStep1Success = (student: Omit<StudentRecord, 'password' | 'hasRegistered'>) => {
     setAuthenticatedStudent(student);
@@ -23,16 +26,26 @@ export function App() {
 
   const handleContinueToProof = () => setCurrentStep(3);
 
+  const handleProceedToExam = () => setCurrentStep(4);
+
+  const handleSubmittedSuccess = (data: { nullifierHash: string; chosenAnswers: string[]; studentSalt: string }) => {
+    setSubmissionData(data);
+    setCurrentStep(5);
+  };
+
   const handleReset = () => {
     setCurrentStep(1);
     setAuthenticatedStudent(null);
     setIdentity(null);
+    setSubmissionData(null);
   };
 
   const steps = [
     { number: 1, label: 'Authenticate', caption: 'Verify student', icon: LockKeyhole },
     { number: 2, label: 'Anonymize', caption: 'Create identity', icon: Sparkles },
-    { number: 3, label: 'Prove', caption: 'Zero-knowledge proof', icon: ShieldCheck },
+    { number: 3, label: 'Prove', caption: 'Join & ZK proof', icon: ShieldCheck },
+    { number: 4, label: 'Take Exam', caption: 'Submit answers', icon: FileText },
+    { number: 5, label: 'Results', caption: 'Score reveal', icon: Award },
   ];
 
   return (
@@ -106,7 +119,7 @@ export function App() {
 
           <section className="flow-card">
             <div className="flow-card-top">
-              <div className="step-counter">STEP {currentStep} OF 3</div>
+              <div className="step-counter">STEP {currentStep} OF 5</div>
               {authenticatedStudent && (
                 <div className="verified-chip"><Check size={13} /> Student verified</div>
               )}
@@ -121,10 +134,28 @@ export function App() {
               />
             )}
             {currentStep === 3 && authenticatedStudent && identity && (
-              <Step3ProofGeneration studentEmail={authenticatedStudent.email} identity={identity} />
+              <Step3ProofGeneration
+                studentEmail={authenticatedStudent.email}
+                identity={identity}
+                onProceedToExam={handleProceedToExam}
+              />
+            )}
+            {currentStep === 4 && identity && (
+              <ExamPortal
+                examId="101"
+                identity={identity}
+                onSubmittedSuccess={handleSubmittedSuccess}
+              />
+            )}
+            {currentStep === 5 && (
+              <ScoreReveal
+                examId="101"
+                nullifierHash={submissionData?.nullifierHash}
+                onResetFlow={handleReset}
+              />
             )}
 
-            {currentStep === 3 && identity && (
+            {currentStep <= 3 && identity && (
               <div className="flow-footer-note"><ArrowRight size={14} /> Your proof can demonstrate group membership without revealing your student identity.</div>
             )}
           </section>
@@ -141,3 +172,4 @@ export function App() {
 }
 
 export default App;
+

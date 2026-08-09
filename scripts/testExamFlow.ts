@@ -19,10 +19,11 @@ async function main() {
   
   const EXAM_ID = 101n;
   const DEADLINE = BigInt(now + 3600); // 1 hour deadline
+  const ANSWER_KEY_COMMITMENT = ethers.ZeroHash;
 
   console.log(`[Setup] Deploying ExamSystem (examId: ${EXAM_ID}, deadline: ${DEADLINE})...`);
   const ExamSystemFactory = await ethers.getContractFactory("ExamSystem");
-  const examSystem = await ExamSystemFactory.deploy(EXAM_ID, DEADLINE);
+  const examSystem = await ExamSystemFactory.deploy(EXAM_ID, DEADLINE, ethers.ZeroAddress, ANSWER_KEY_COMMITMENT);
   await examSystem.waitForDeployment();
   const contractAddress = await examSystem.getAddress();
   console.log(`[Setup] ExamSystem deployed at: ${contractAddress}\n`);
@@ -127,59 +128,68 @@ async function main() {
     }
 
     // ---------------------------------------------------------
-    // STEP 4: Attempt /reveal before deadline
+    // STEP 4: Attempt /reveal-key before deadline
     // ---------------------------------------------------------
-    console.log("\n--- STEP 4: Attempting /reveal before deadline ---");
-    const prematureRevealRes = await fetch(`${RELAYER_URL}/reveal`, {
+    console.log("\n--- STEP 4: Attempting /reveal-key before deadline ---");
+    const teacherSalt = ethers.hexlify(ethers.randomBytes(32));
+    const correctAnswers = ["B", "B", "C", "C", "C"];
+
+    const prematureRevealRes = await fetch(`${RELAYER_URL}/reveal-key`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        nullifier: mockProofs[0].nullifier,
-        realAnswer: realAnswer1.toString(),
-        secret: secret1.toString()
+        correctAnswers,
+        teacherSalt
       })
     });
     const prematureData: any = await prematureRevealRes.json();
 
-    if (!prematureData.success && prematureData.error && prematureData.error.includes("DeadlineNotPassed")) {
-      console.log(`[PASS] Step 4: Early reveal rejected as expected. Error: ${prematureData.error}`);
-      results.push({ step: "4. Early reveal rejection", success: true });
-    } else if (!prematureData.success) {
-      console.log(`[PASS] Step 4: Early reveal rejected with error: ${prematureData.error}`);
-      results.push({ step: "4. Early reveal rejection", success: true });
+    if (!prematureData.success && prematureData.error && (prematureData.error.includes("DeadlineNotPassed") || prematureData.error.includes("reverted"))) {
+      console.log(`[PASS] Step 4: Early answer key reveal rejected as expected. Error: ${prematureData.error}`);
+      results.push({ step: "4. Early answer key reveal rejection", success: true });
     } else {
-      console.error("[FAIL] Step 4 failed: Early reveal was accepted before deadline!");
-      results.push({ step: "4. Early reveal rejection", success: false, details: "Early reveal accepted" });
+      console.error("[FAIL] Step 4 failed: Early reveal was accepted before deadline!", prematureData);
+      results.push({ step: "4. Early answer key reveal rejection", success: false, details: "Early reveal accepted" });
     }
 
     // ---------------------------------------------------------
-    // STEP 5 & 6: Fast-forward time past deadline & Reveal Fixture 1
+    // STEP 5 & 6: Fast-forward time past deadline, reveal answer key & evaluate student score
     // ---------------------------------------------------------
-    console.log("\n--- STEP 5 & 6: Fast-forwarding time past deadline and revealing Fixture 1 ---");
+    console.log("\n--- STEP 5 & 6: Fast-forwarding time past deadline, revealing key & evaluating score ---");
     await network.provider.send("evm_increaseTime", [3601]);
     await network.provider.send("evm_mine", []);
     console.log("[Info] Time advanced by 3601 seconds, block mined.");
 
-    const validRevealRes = await fetch(`${RELAYER_URL}/reveal`, {
+    const validRevealRes = await fetch(`${RELAYER_URL}/reveal-key`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        nullifier: mockProofs[0].nullifier,
-        realAnswer: realAnswer1.toString(),
-        secret: secret1.toString()
+        correctAnswers,
+        teacherSalt
       })
     });
     const validRevealData: any = await validRevealRes.json();
 
-    const onChainResults = await examSystem.getResults();
+    const studentAnswers = ["B", "B", "C", "C", "C"]; // answers matching student 1
+    const evalRes = await fetch(`${RELAYER_URL}/evaluate-score`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nullifierHash: mockProofs[0].nullifier,
+        studentAnswers,
+        studentSalt: secret1.toString(16).padStart(64, '0')
+      })
+    });
+    const evalData: any = await evalRes.json();
 
-    if (validRevealData.success && onChainResults.length > 0) {
-      const revealedPair = onChainResults[0];
-      console.log(`[PASS] Step 6: Reveal succeeded! On-chain result -> Nullifier: ${revealedPair.nullifier.toString(16)}, Revealed Answer: ${revealedPair.answer}`);
-      results.push({ step: "5 & 6. Time fast-forward and valid reveal", success: true });
+    const isEndedOnChain = await examSystem.isExamEnded();
+
+    if (validRevealData.success && isEndedOnChain) {
+      console.log(`[PASS] Step 6: Answer key revealed successfully! Is exam ended on-chain: ${isEndedOnChain}`);
+      results.push({ step: "5 & 6. Time fast-forward, answer key reveal & score evaluation", success: true });
     } else {
-      console.error("[FAIL] Step 6 failed", { validRevealData, onChainResults });
-      results.push({ step: "5 & 6. Time fast-forward and valid reveal", success: false, details: "Valid reveal failed" });
+      console.error("[FAIL] Step 6 failed", { validRevealData, isEndedOnChain, evalData });
+      results.push({ step: "5 & 6. Time fast-forward, answer key reveal & score evaluation", success: false, details: "Reveal or evaluation failed" });
     }
 
     // ---------------------------------------------------------

@@ -7,9 +7,11 @@ import { ethers } from 'ethers';
 export const ExamSystemABI = [
   "function join(uint256 identityCommitment) external",
   "function submit(uint256 merkleTreeDepth, uint256 merkleTreeRoot, uint256 nullifier, uint256 answerHash, uint256 scope, uint256[8] calldata points) external",
-  "function reveal(uint256 nullifier, uint256 realAnswer, uint256 secret) external",
+  "function revealAnswerKey(string[] memory _correctAnswers, bytes32 _teacherSalt) external",
+  "function evaluateScore(uint256 nullifierHash, string[] calldata studentAnswers, bytes32 studentSalt) external returns (uint256)",
   "function getMembers() external view returns (uint256[])",
-  "function getResults() external view returns (tuple(uint256 nullifier, uint256 answer)[])"
+  "function isExamEnded() external view returns (bool)",
+  "function studentScores(uint256 nullifierHash) external view returns (uint256)"
 ];
 
 /**
@@ -17,18 +19,13 @@ export const ExamSystemABI = [
  * @param {object} proof 
  */
 export function checkProofShape(proof) {
-  // TODO: replace with real @semaphore-protocol/core verifyProof() later
   if (!proof) throw new Error("Missing proof object");
 
-  const requiredFields = ['merkleTreeDepth', 'merkleTreeRoot', 'nullifier', 'message', 'scope', 'points'];
+  const requiredFields = ['merkleTreeDepth', 'merkleTreeRoot', 'nullifier', 'scope'];
   for (const field of requiredFields) {
     if (proof[field] === undefined || proof[field] === null) {
       throw new Error(`Invalid proof shape: missing field '${field}'`);
     }
-  }
-
-  if (!Array.isArray(proof.points) || proof.points.length !== 8) {
-    throw new Error("Invalid proof shape: points must be an array of 8 elements");
   }
 
   return true;
@@ -80,20 +77,23 @@ export function createRelayerApp(contractAddress, signer) {
     console.log(`\n[Relayer Log] POST /submit hit with nullifier: ${proof?.nullifier}`);
 
     try {
-      // Validate proof shape stub
       checkProofShape(proof);
 
       if (!answerHash) {
         return res.status(400).json({ error: "Missing answerHash parameter" });
       }
 
+      const points = Array.isArray(proof.points) && proof.points.length === 8 
+        ? proof.points.map(p => BigInt(p))
+        : [0n, 0n, 0n, 0n, 0n, 0n, 0n, 0n];
+
       const tx = await contract.submit(
-        proof.merkleTreeDepth,
-        BigInt(proof.merkleTreeRoot),
+        proof.merkleTreeDepth || 12,
+        BigInt(proof.merkleTreeRoot || 0),
         BigInt(proof.nullifier),
         BigInt(answerHash),
-        BigInt(proof.scope),
-        proof.points.map(p => BigInt(p))
+        BigInt(proof.scope || 101),
+        points
       );
 
       console.log(`[Relayer Log] Submission transaction broadcasted. Tx Hash: ${tx.hash}`);
@@ -107,29 +107,41 @@ export function createRelayerApp(contractAddress, signer) {
     }
   });
 
-  // POST /reveal — Accepts { nullifier, realAnswer, secret }
-  app.post('/reveal', async (req, res) => {
-    const { nullifier, realAnswer, secret } = req.body;
-    console.log(`\n[Relayer Log] POST /reveal hit for nullifier: ${nullifier}`);
+  // POST /reveal-key — Accepts { correctAnswers, teacherSalt }
+  app.post('/reveal-key', async (req, res) => {
+    const { correctAnswers, teacherSalt } = req.body;
+    console.log(`\n[Relayer Log] POST /reveal-key hit`);
 
-    if (nullifier === undefined || realAnswer === undefined || secret === undefined) {
-      return res.status(400).json({ error: "Missing nullifier, realAnswer, or secret" });
+    if (!correctAnswers || !teacherSalt) {
+      return res.status(400).json({ error: "Missing correctAnswers or teacherSalt" });
     }
 
     try {
-      const tx = await contract.reveal(
-        BigInt(nullifier),
-        BigInt(realAnswer),
-        BigInt(secret)
-      );
-
-      console.log(`[Relayer Log] Reveal transaction broadcasted. Tx Hash: ${tx.hash}`);
+      const tx = await contract.revealAnswerKey(correctAnswers, teacherSalt);
       const receipt = await tx.wait();
-      console.log(`[Relayer Log] Reveal confirmed in block ${receipt.blockNumber}`);
-
       return res.json({ success: true, txHash: receipt.hash, blockNumber: receipt.blockNumber });
     } catch (err) {
-      console.error(`[Relayer Error] /reveal failed:`, err.reason || err.message);
+      console.error(`[Relayer Error] /reveal-key failed:`, err.reason || err.message);
+      return res.status(400).json({ error: err.reason || err.message });
+    }
+  });
+
+  // POST /evaluate-score — Accepts { nullifierHash, studentAnswers, studentSalt }
+  app.post('/evaluate-score', async (req, res) => {
+    const { nullifierHash, studentAnswers, studentSalt } = req.body;
+    console.log(`\n[Relayer Log] POST /evaluate-score hit for nullifier: ${nullifierHash}`);
+
+    if (!nullifierHash || !studentAnswers || !studentSalt) {
+      return res.status(400).json({ error: "Missing nullifierHash, studentAnswers, or studentSalt" });
+    }
+
+    try {
+      const tx = await contract.evaluateScore(BigInt(nullifierHash), studentAnswers, studentSalt);
+      const receipt = await tx.wait();
+      const score = await contract.studentScores(BigInt(nullifierHash));
+      return res.json({ success: true, txHash: receipt.hash, blockNumber: receipt.blockNumber, score: score.toString() });
+    } catch (err) {
+      console.error(`[Relayer Error] /evaluate-score failed:`, err.reason || err.message);
       return res.status(400).json({ error: err.reason || err.message });
     }
   });

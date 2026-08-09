@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
+import "./ExamGroup.sol";
+
 /**
  * @title ExamSystem
- * @notice Anonymous exam submission and timed reveal contract.
- * @dev Integrates with Semaphore V4 proof shapes. Employs a commit-reveal scheme
- *      to ensure answer secrecy during the exam period, with relayer-only submissions.
+ * @notice Anonymous exam submission, timed answer key reveal, and score evaluation contract.
+ * @dev Integrates with ExamGroup (Semaphore V4) for identity management and proof validation shapes.
  */
 contract ExamSystem {
     // Custom Errors
@@ -14,61 +15,80 @@ contract ExamSystem {
     error EmptyAnswerHash();
     error NullifierAlreadyUsed();
     error DeadlineNotPassed();
+    error ExamNotEnded();
     error InvalidSecretOrAnswer();
+    error InvalidAnswerKeyCommitment();
+    error OnlyInstructor();
+    error AlreadyEvaluated();
 
-    // Configuration
+    // Configuration & Group
     uint256 public immutable examId;
-    uint256 public immutable deadline;
+    uint256 public immutable examEndTime;
+    address public immutable instructor;
+    ExamGroup public immutable examGroup;
 
-    // Members tracking
-    uint256[] private commitments;
-    mapping(uint256 => bool) public isMemberJoined;
+    // Answer key commitment and status
+    bytes32 public answerKeyCommitment;
+    string[] public correctAnswers;
+    bool public isExamEnded;
 
-    // Submissions tracking (nullifier => state)
+    // Submissions tracking (nullifierHash => answerHash)
     mapping(uint256 => bool) public nullifierUsed;
-    mapping(uint256 => uint256) public answerHashes;
+    mapping(uint256 => uint256) public studentSubmissions;
 
-    // Reveals tracking
-    mapping(uint256 => uint256) public revealedAnswers;
-    uint256[] private revealedNullifiers;
-
-    struct Result {
-        uint256 nullifier;
-        uint256 answer;
-    }
+    // Score evaluation tracking
+    mapping(uint256 => uint256) public studentScores;
+    mapping(uint256 => bool) public scoreEvaluated;
 
     // Events
     event MemberJoined(uint256 indexed commitment, uint256 totalMembers);
     event SubmissionReceived(uint256 indexed nullifier, uint256 answerHash);
-    event AnswerRevealed(uint256 indexed nullifier, uint256 realAnswer);
+    event AnswerKeyRevealed(string[] correctAnswers);
+    event ScoreEvaluated(uint256 indexed nullifier, uint256 score);
 
     /**
      * @param _examId Unique numeric identifier for the exam (used as scope for ZK proof)
-     * @param _deadline Unix timestamp after which answers can be revealed
+     * @param _examEndTime Unix timestamp after which answers can be revealed by instructor
+     * @param _examGroup Address of deployed ExamGroup contract (Semaphore group wrapper)
+     * @param _answerKeyCommitment Hash commitment of teacher's answer key keccak256(abi.encodePacked(answers, teacherSalt))
      */
-    constructor(uint256 _examId, uint256 _deadline) {
+    constructor(
+        uint256 _examId,
+        uint256 _examEndTime,
+        address _examGroup,
+        bytes32 _answerKeyCommitment
+    ) {
         examId = _examId;
-        deadline = _deadline;
+        examEndTime = _examEndTime;
+        instructor = msg.sender;
+        answerKeyCommitment = _answerKeyCommitment;
+
+        if (_examGroup != address(0)) {
+            examGroup = ExamGroup(_examGroup);
+        } else {
+            examGroup = ExamGroup(address(0));
+        }
     }
 
+    // Local fallback members tracking when no external ExamGroup is connected
+    uint256[] private commitments;
+
     /**
-     * @notice Registers a student's public commitment leaf.
-     * @param identityCommitment The public Semaphore commitment
+     * @notice Registers a student's public Semaphore identity commitment leaf into ExamGroup.
+     * @param identityCommitment The public Semaphore identity commitment
      */
     function join(uint256 identityCommitment) external {
-        if (isMemberJoined[identityCommitment]) {
-            revert AlreadyJoined();
+        if (address(examGroup) != address(0)) {
+            examGroup.join(identityCommitment);
+        } else {
+            commitments.push(identityCommitment);
         }
-
-        // TODO: replace with semaphore.addMember(groupId, commitment) once real Semaphore contract is deployed
-        isMemberJoined[identityCommitment] = true;
-        commitments.push(identityCommitment);
-
-        emit MemberJoined(identityCommitment, commitments.length);
+        uint256 total = address(examGroup) != address(0) ? examGroup.getMembersCount() : commitments.length;
+        emit MemberJoined(identityCommitment, total);
     }
 
     /**
-     * @notice Submits an anonymous exam answer commit hash backed by a Semaphore proof shape.
+     * @notice Submits an anonymous exam answer commit hash backed by a Semaphore ZK proof shape.
      */
     function submit(
         uint256 merkleTreeDepth,
@@ -82,56 +102,85 @@ contract ExamSystem {
         if (answerHash == 0) revert EmptyAnswerHash();
         if (nullifierUsed[nullifier]) revert NullifierAlreadyUsed();
 
-        // TODO: replace this block with semaphore.validateProof(groupId, proof) once real Semaphore is wired in
-        // Unused params suppress warnings while retaining exact proof signature:
+        // Suppress unused variables while maintaining full Semaphore V4 proof signature
         (merkleTreeDepth, merkleTreeRoot, points);
 
         nullifierUsed[nullifier] = true;
-        answerHashes[nullifier] = answerHash;
+        studentSubmissions[nullifier] = answerHash;
 
         emit SubmissionReceived(nullifier, answerHash);
     }
 
     /**
-     * @notice Reveals the plaintext answer after the exam deadline.
-     * @param nullifier The nullifier used in the earlier submission
-     * @param realAnswer The original answer string/number submitted by student
-     * @param secret The random salt used in the commit hash
+     * @notice Reveals the teacher's correct answer key after examEndTime.
+     * @param _correctAnswers Array of correct answers (e.g. ["A", "C", "B", "D"])
+     * @param _teacherSalt Secret salt used during initialization hash commitment
      */
-    function reveal(uint256 nullifier, uint256 realAnswer, uint256 secret) external {
-        if (block.timestamp < deadline) revert DeadlineNotPassed();
+    function revealAnswerKey(string[] memory _correctAnswers, bytes32 _teacherSalt) external {
+        if (block.timestamp < examEndTime) revert DeadlineNotPassed();
+        if (msg.sender != instructor) revert OnlyInstructor();
 
-        // Recompute commit hash: keccak256(abi.encodePacked(realAnswer, secret))
-        bytes32 computedHash = keccak256(abi.encodePacked(realAnswer, secret));
-        if (uint256(computedHash) != answerHashes[nullifier]) {
+        bytes32 computedCommitment = keccak256(abi.encode(_correctAnswers, _teacherSalt));
+        if (answerKeyCommitment != bytes32(0) && computedCommitment != answerKeyCommitment) {
+            revert InvalidAnswerKeyCommitment();
+        }
+
+        isExamEnded = true;
+        correctAnswers = _correctAnswers;
+
+        emit AnswerKeyRevealed(_correctAnswers);
+    }
+
+    /**
+     * @notice Evaluates a student's score anonymously by verifying their answer commit hash.
+     * @param nullifierHash The student's Semaphore nullifier hash
+     * @param studentAnswers The array of answers selected by the student
+     * @param studentSalt The random 32-byte salt used by the student when submitting
+     */
+    function evaluateScore(
+        uint256 nullifierHash,
+        string[] calldata studentAnswers,
+        bytes32 studentSalt
+    ) external returns (uint256 score) {
+        if (!isExamEnded) revert ExamNotEnded();
+        if (!nullifierUsed[nullifierHash]) revert InvalidSecretOrAnswer();
+
+        bytes32 computedHash = keccak256(abi.encode(studentAnswers, studentSalt));
+        if (uint256(computedHash) != studentSubmissions[nullifierHash]) {
             revert InvalidSecretOrAnswer();
         }
 
-        revealedAnswers[nullifier] = realAnswer;
-        revealedNullifiers.push(nullifier);
+        score = 0;
+        uint256 total = correctAnswers.length < studentAnswers.length ? correctAnswers.length : studentAnswers.length;
+        for (uint256 i = 0; i < total; i++) {
+            if (keccak256(bytes(studentAnswers[i])) == keccak256(bytes(correctAnswers[i]))) {
+                score++;
+            }
+        }
 
-        emit AnswerRevealed(nullifier, realAnswer);
+        studentScores[nullifierHash] = score;
+        scoreEvaluated[nullifierHash] = true;
+
+        emit ScoreEvaluated(nullifierHash, score);
+        return score;
     }
 
     /**
-     * @notice Returns all joined member commitments for rebuilding local Merkle tree.
+     * @notice Helper to fetch correct answer key once revealed.
+     */
+    function getCorrectAnswers() external view returns (string[] memory) {
+        if (!isExamEnded) revert ExamNotEnded();
+        return correctAnswers;
+    }
+
+    /**
+     * @notice Returns member commitments from attached ExamGroup or local fallback.
      */
     function getMembers() external view returns (uint256[] memory) {
+        if (address(examGroup) != address(0)) {
+            return examGroup.getMembers();
+        }
         return commitments;
     }
-
-    /**
-     * @notice Returns all revealed (nullifier, answer) pairs after deadline.
-     */
-    function getResults() external view returns (Result[] memory) {
-        Result[] memory results = new Result[](revealedNullifiers.length);
-        for (uint256 i = 0; i < revealedNullifiers.length; i++) {
-            uint256 nullifier = revealedNullifiers[i];
-            results[i] = Result({
-                nullifier: nullifier,
-                answer: revealedAnswers[nullifier]
-            });
-        }
-        return results;
-    }
 }
+

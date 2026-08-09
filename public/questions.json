@@ -1,0 +1,52 @@
+[
+  {
+    "id": 1,
+    "question": "What is the primary function of zero-knowledge proofs in Semaphore?",
+    "options": [
+      { "key": "A", "text": "To reveal private key secrets publicly" },
+      { "key": "B", "text": "To prove membership in a group without revealing identity" },
+      { "key": "C", "text": "To encrypt blockchain transaction history" },
+      { "key": "D", "text": "To store Web2 student email databases" }
+    ]
+  },
+  {
+    "id": 2,
+    "question": "In Semaphore V4, what is the role of the 'Nullifier Hash'?",
+    "options": [
+      { "key": "A", "text": "To uniquely identify a student across all exams" },
+      { "key": "B", "text": "To prevent double-signaling or double-submission anonymously" },
+      { "key": "C", "text": "To store the user's password hash" },
+      { "key": "D", "text": "To calculate gas fees for smart contracts" }
+    ]
+  },
+  {
+    "id": 3,
+    "question": "Why is a random salt added when hashing student exam answers?",
+    "options": [
+      { "key": "A", "text": "To speed up smart contract execution" },
+      { "key": "B", "text": "To compress the memory size of the response" },
+      { "key": "C", "text": "To prevent brute-force dictionary attacks against predictable answers" },
+      { "key": "D", "text": "To link the student's email to their submission" }
+    ]
+  },
+  {
+    "id": 4,
+    "question": "Which cryptographic tree structure does Semaphore use to store identity commitments?",
+    "options": [
+      { "key": "A", "text": "Patricia Trie" },
+      { "key": "B", "text": "B-Tree" },
+      { "key": "C", "text": "Merkle Tree (Poseidon Hash)" },
+      { "key": "D", "text": "Binary Search Tree" }
+    ]
+  },
+  {
+    "id": 5,
+    "question": "When does the instructor reveal the answer key in the commit-reveal scheme?",
+    "options": [
+      { "key": "A", "text": "Before the exam starts" },
+      { "key": "B", "text": "During the active exam window" },
+      { "key": "C", "text": "After the exam deadline has passed" },
+      { "key": "D", "text": "Answer keys are never revealed" }
+    ]
+  }
+]
