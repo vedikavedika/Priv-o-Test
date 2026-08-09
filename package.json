@@ -1,0 +1,37 @@
+{
+  "name": "exam-semaphore-portal",
+  "version": "1.0.0",
+  "description": "Anonymous Exam Eligibility System - Semaphore V4 Portal",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "compile": "hardhat compile",
+    "deploy:sepolia": "hardhat run scripts/deploy.ts --network sepolia",
+    "demo:cli": "tsx scripts/demoSteps123.ts"
+  },
+  "dependencies": {
+    "@semaphore-protocol/contracts": "^4.14.3",
+    "@semaphore-protocol/core": "^4.14.3",
+    "@semaphore-protocol/group": "^4.14.3",
+    "@semaphore-protocol/identity": "^4.14.3",
+    "@semaphore-protocol/proof": "^4.14.3",
+    "ethers": "^6.13.0",
+    "lucide-react": "^0.427.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@types/node": "^20.14.10",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "hardhat": "^2.22.6",
+    "snarkjs": "^0.7.4",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.3",
+    "vite": "^5.3.3"
+  }
+}
