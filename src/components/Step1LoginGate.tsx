@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { universityDb, StudentRecord } from '../studentDb.js';
-import { ShieldCheck, ArrowRight, Mail, Lock, Sparkles, CheckCircle2 } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, UserRound } from 'lucide-react';
 
 interface Step1LoginGateProps {
   onSuccess: (student: Omit<StudentRecord, 'password' | 'hasRegistered'>) => void;
@@ -9,18 +9,21 @@ interface Step1LoginGateProps {
 export const Step1LoginGate: React.FC<Step1LoginGateProps> = ({ onSuccess }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+    setIsSubmitting(true);
 
     const result = universityDb.authenticateStudent(email, password);
-    if (result.success && result.student) {
-      onSuccess(result.student);
-    } else {
-      setErrorMsg(result.message);
-    }
+    window.setTimeout(() => {
+      setIsSubmitting(false);
+      if (result.success && result.student) onSuccess(result.student);
+      else setErrorMsg(result.message);
+    }, 350);
   };
 
   const handleQuickFill = (demoEmail: string) => {
@@ -30,80 +33,61 @@ export const Step1LoginGate: React.FC<Step1LoginGateProps> = ({ onSuccess }) => 
   };
 
   return (
-    <div className="glass-card p-8 sm:p-12 max-w-lg mx-auto transition-all duration-300">
-      {/* Header */}
-      <div className="text-center mb-8">
-        <div className="inline-flex p-4 bg-indigo-500/10 rounded-2xl border border-indigo-500/20 text-indigo-400 mb-4 shadow-lg shadow-indigo-500/10">
-          <ShieldCheck className="w-10 h-10" />
+    <div className="screen-content">
+      <div className="screen-heading">
+        <div className="screen-icon blue"><LockKeyhole size={23} /></div>
+        <div>
+          <h2>Verify your student identity</h2>
+          <p>Use your university credentials to establish exam eligibility.</p>
         </div>
-        <h2 className="text-3xl font-extrabold text-white tracking-tight">Student Login</h2>
-        <p className="text-sm text-slate-400 mt-2">Enter your university credentials to verify exam eligibility</p>
       </div>
 
-      {errorMsg && (
-        <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-300 text-xs text-center font-medium animate-fadeIn">
-          {errorMsg}
-        </div>
-      )}
+      <div className="trust-strip">
+        <ShieldCheck size={17} />
+        <span>Authentication is used only to verify eligibility before anonymity is established.</span>
+      </div>
 
-      {/* Clean Form */}
-      <form onSubmit={handleLogin} className="space-y-5">
-        <div className="space-y-1.5">
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-300">Email Address</label>
-          <div className="relative input-focus-glow rounded-xl transition-all">
-            <Mail className="w-5 h-5 absolute left-4 top-3.5 text-slate-400" />
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="e.g. alice@university.edu"
-              required
-              className="w-full pl-12 pr-4 py-3.5 bg-slate-900/90 border border-slate-700/60 rounded-xl text-white placeholder-slate-500 text-sm focus:outline-none transition-all"
-            />
+      {errorMsg && <div className="error-banner">{errorMsg}</div>}
+
+      <form onSubmit={handleLogin} className="auth-form">
+        <div className="field-group">
+          <label htmlFor="email">University email</label>
+          <div className="input-wrap">
+            <Mail size={17} />
+            <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="alice@university.edu" required autoComplete="username" />
           </div>
         </div>
 
-        <div className="space-y-1.5">
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-300">Password</label>
-          <div className="relative input-focus-glow rounded-xl transition-all">
-            <Lock className="w-5 h-5 absolute left-4 top-3.5 text-slate-400" />
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              className="w-full pl-12 pr-4 py-3.5 bg-slate-900/90 border border-slate-700/60 rounded-xl text-white placeholder-slate-500 text-sm focus:outline-none transition-all"
-            />
+        <div className="field-group">
+          <div className="field-label-row"><label htmlFor="password">Password</label><span>University account</span></div>
+          <div className="input-wrap">
+            <LockKeyhole size={17} />
+            <input id="password" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" required autoComplete="current-password" />
+            <button type="button" className="input-action" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
+              {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+            </button>
           </div>
         </div>
 
-        <button
-          type="submit"
-          className="w-full py-4 px-6 gradient-bg-primary hover:opacity-95 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/25 flex items-center justify-center space-x-2 transition-all cursor-pointer text-base mt-2"
-        >
-          <span>Verify & Continue</span>
-          <ArrowRight className="w-5 h-5" />
+        <button className="primary-button" type="submit" disabled={isSubmitting}>
+          {isSubmitting ? <span className="spinner" /> : <UserRound size={17} />}
+          <span>{isSubmitting ? 'Verifying credentials…' : 'Verify & continue'}</span>
+          {!isSubmitting && <ArrowRight size={17} />}
         </button>
       </form>
 
-      {/* Quick Test Demo Chips */}
-      <div className="mt-8 pt-6 border-t border-slate-800/80 text-center">
-        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-3">
-          Quick Demo Login
-        </span>
-        <div className="flex flex-wrap gap-2 justify-center">
-          {['alice@university.edu', 'bob@university.edu', 'charlie@university.edu'].map((demoEmail) => (
-            <button
-              key={demoEmail}
-              type="button"
-              onClick={() => handleQuickFill(demoEmail)}
-              className="px-3 py-1.5 bg-slate-800/60 hover:bg-indigo-950/60 border border-slate-700/50 hover:border-indigo-500/40 rounded-lg text-slate-300 hover:text-indigo-300 text-xs font-mono transition-all cursor-pointer"
-            >
-              {demoEmail.split('@')[0]}
+      <div className="demo-section">
+        <div className="demo-label">Demo accounts</div>
+        <div className="demo-grid">
+          {['alice@university.edu', 'bob@university.edu'].map((account) => (
+            <button key={account} className="demo-account" onClick={() => handleQuickFill(account)} type="button">
+              <span className="avatar">{account[0].toUpperCase()}</span>
+              <span>{account.split('@')[0]}</span>
+              <span className="demo-arrow">↗</span>
             </button>
           ))}
         </div>
+        <p className="demo-hint">Demo password: <code>pass123</code></p>
       </div>
     </div>
   );

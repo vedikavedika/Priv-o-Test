@@ -4,7 +4,7 @@ import { StudentRecord } from './studentDb.js';
 import { Step1LoginGate } from './components/Step1LoginGate.js';
 import { Step2Identity } from './components/Step2Identity.js';
 import { Step3ProofGeneration } from './components/Step3ProofGeneration.js';
-import { GraduationCap, CheckCircle, RotateCcw } from 'lucide-react';
+import { ArrowRight, Check, LockKeyhole, RotateCcw, ShieldCheck, Sparkles } from 'lucide-react';
 import './styles.css';
 
 export function App() {
@@ -19,8 +19,9 @@ export function App() {
 
   const handleStep2IdentityCreated = (createdIdentity: Identity) => {
     setIdentity(createdIdentity);
-    setCurrentStep(3);
   };
+
+  const handleContinueToProof = () => setCurrentStep(3);
 
   const handleReset = () => {
     setCurrentStep(1);
@@ -28,106 +29,112 @@ export function App() {
     setIdentity(null);
   };
 
+  const steps = [
+    { number: 1, label: 'Authenticate', caption: 'Verify student', icon: LockKeyhole },
+    { number: 2, label: 'Anonymize', caption: 'Create identity', icon: Sparkles },
+    { number: 3, label: 'Prove', caption: 'Zero-knowledge proof', icon: ShieldCheck },
+  ];
+
   return (
-    <div className="min-h-screen flex flex-col justify-between selection:bg-indigo-500 selection:text-white py-8">
-      {/* Top Header */}
-      <header className="max-w-4xl mx-auto px-6 w-full flex items-center justify-between mb-8">
-        <div className="flex items-center space-x-3.5">
-          <div className="p-3 gradient-bg-primary rounded-2xl shadow-lg shadow-indigo-500/30">
-            <GraduationCap className="w-7 h-7 text-white" />
-          </div>
+    <div className="app-shell">
+      <div className="ambient ambient-one" />
+      <div className="ambient ambient-two" />
+      <div className="grid-overlay" />
+
+      <header className="topbar page-width">
+        <div className="brand">
+          <div className="brand-mark"><ShieldCheck size={20} /></div>
           <div>
-            <h1 className="text-xl font-extrabold text-white tracking-tight flex items-center space-x-2">
-              <span>Exam Portal</span>
-              <span className="text-xs px-2.5 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-full font-mono font-medium">
-                Semaphore V4
-              </span>
-            </h1>
-            <p className="text-xs text-slate-400">Anonymous Student Eligibility & Proof Verification</p>
+            <div className="brand-name">Priv<span>-o-</span>Test</div>
+            <div className="brand-subtitle">Private exam verification</div>
           </div>
         </div>
 
-        {(authenticatedStudent || identity) && (
-          <button
-            onClick={handleReset}
-            className="flex items-center space-x-2 text-xs font-semibold text-slate-400 hover:text-white px-4 py-2 bg-slate-900/80 hover:bg-slate-800 border border-slate-700/60 rounded-xl transition-all cursor-pointer"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset Flow</span>
-          </button>
-        )}
+        <div className="topbar-right">
+          <div className="secure-pill"><span className="status-dot" /> Local & encrypted</div>
+          {(authenticatedStudent || identity) && (
+            <button className="ghost-button" onClick={handleReset} title="Restart the flow">
+              <RotateCcw size={15} /> Reset
+            </button>
+          )}
+        </div>
       </header>
 
-      {/* Main Container */}
-      <main className="max-w-3xl mx-auto px-6 w-full flex-grow flex flex-col justify-center">
-        {/* Spacious Step Stepper Bar */}
-        <div className="mb-12 max-w-md mx-auto w-full">
-          <div className="flex items-center justify-between relative">
-            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-slate-800/80 rounded-full -z-10" />
+      <main className="page-width main-content">
+        <section className="hero-copy">
+          <div className="eyebrow"><span>ZERO-KNOWLEDGE EXAM ACCESS</span></div>
+          <h1>Prove you're eligible.<br /><em>Keep your identity private.</em></h1>
+          <p>
+            Priv-o-Test verifies your university credentials once, then separates your real identity
+            from the cryptographic identity used for the exam.
+          </p>
+        </section>
 
-            {/* Step 1 Badge */}
-            <div className="flex flex-col items-center space-y-2 bg-slate-950 px-3">
-              <div
-                className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-base transition-all duration-300 ${
-                  currentStep >= 1
-                    ? 'gradient-bg-primary text-white shadow-lg shadow-indigo-500/30 scale-105'
-                    : 'bg-slate-900 text-slate-500 border border-slate-800'
-                }`}
-              >
-                {currentStep > 1 ? <CheckCircle className="w-6 h-6 text-white" /> : '1'}
-              </div>
-              <span className={`text-xs font-semibold ${currentStep >= 1 ? 'text-indigo-400' : 'text-slate-500'}`}>
-                Login
-              </span>
+        <div className="workspace">
+          <aside className="journey-panel">
+            <div className="journey-label">YOUR PRIVACY JOURNEY</div>
+            <div className="journey-list">
+              {steps.map((step, index) => {
+                const active = currentStep === step.number;
+                const complete = currentStep > step.number;
+                const Icon = step.icon;
+                return (
+                  <React.Fragment key={step.number}>
+                    <div className={`journey-step ${active ? 'active' : ''} ${complete ? 'complete' : ''}`}>
+                      <div className="step-icon">
+                        {complete ? <Check size={16} strokeWidth={3} /> : <Icon size={17} />}
+                      </div>
+                      <div>
+                        <div className="step-label">{step.label}</div>
+                        <div className="step-caption">{step.caption}</div>
+                      </div>
+                    </div>
+                    {index < steps.length - 1 && <div className={`journey-line ${complete ? 'complete' : ''}`} />}
+                  </React.Fragment>
+                );
+              })}
             </div>
 
-            {/* Step 2 Badge */}
-            <div className="flex flex-col items-center space-y-2 bg-slate-950 px-3">
-              <div
-                className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-base transition-all duration-300 ${
-                  currentStep >= 2
-                    ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/30 scale-105'
-                    : 'bg-slate-900 text-slate-500 border border-slate-800'
-                }`}
-              >
-                {currentStep > 2 ? <CheckCircle className="w-6 h-6 text-white" /> : '2'}
+            <div className="privacy-note">
+              <ShieldCheck size={18} />
+              <div>
+                <strong>Your identity stays yours</strong>
+                <p>Your email authenticates eligibility. It is not used as your anonymous exam identity.</p>
               </div>
-              <span className={`text-xs font-semibold ${currentStep >= 2 ? 'text-purple-400' : 'text-slate-500'}`}>
-                Identity
-              </span>
+            </div>
+          </aside>
+
+          <section className="flow-card">
+            <div className="flow-card-top">
+              <div className="step-counter">STEP {currentStep} OF 3</div>
+              {authenticatedStudent && (
+                <div className="verified-chip"><Check size={13} /> Student verified</div>
+              )}
             </div>
 
-            {/* Step 3 Badge */}
-            <div className="flex flex-col items-center space-y-2 bg-slate-950 px-3">
-              <div
-                className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-base transition-all duration-300 ${
-                  currentStep === 3
-                    ? 'gradient-bg-success text-white shadow-lg shadow-emerald-500/30 scale-105'
-                    : 'bg-slate-900 text-slate-500 border border-slate-800'
-                }`}
-              >
-                3
-              </div>
-              <span className={`text-xs font-semibold ${currentStep === 3 ? 'text-emerald-400' : 'text-slate-500'}`}>
-                ZK Proof
-              </span>
-            </div>
-          </div>
+            {currentStep === 1 && <Step1LoginGate onSuccess={handleStep1Success} />}
+            {currentStep === 2 && authenticatedStudent && (
+              <Step2Identity
+                studentEmail={authenticatedStudent.email}
+                onIdentityCreated={handleStep2IdentityCreated}
+                onContinue={handleContinueToProof}
+              />
+            )}
+            {currentStep === 3 && authenticatedStudent && identity && (
+              <Step3ProofGeneration studentEmail={authenticatedStudent.email} identity={identity} />
+            )}
+
+            {currentStep === 3 && identity && (
+              <div className="flow-footer-note"><ArrowRight size={14} /> Your proof can demonstrate group membership without revealing your student identity.</div>
+            )}
+          </section>
         </div>
-
-        {/* Step Views */}
-        {currentStep === 1 && <Step1LoginGate onSuccess={handleStep1Success} />}
-        {currentStep === 2 && authenticatedStudent && (
-          <Step2Identity studentEmail={authenticatedStudent.email} onIdentityCreated={handleStep2IdentityCreated} />
-        )}
-        {currentStep === 3 && authenticatedStudent && identity && (
-          <Step3ProofGeneration studentEmail={authenticatedStudent.email} identity={identity} />
-        )}
       </main>
 
-      {/* Clean Footer */}
-      <footer className="mt-12 text-center text-xs text-slate-400 font-medium">
-        University Anonymous Exam System • Semaphore V4 Zero-Knowledge Protocol
+      <footer className="footer page-width">
+        <span>Priv-o-Test</span>
+        <span className="footer-separator">•</span>
+        <span>Semaphore-powered zero-knowledge verification</span>
       </footer>
     </div>
   );
