@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Identity, Group, generateProof, SemaphoreProof } from '@semaphore-protocol/core';
 import { ethers } from 'ethers';
 import { examGroupManager } from '../groupManager.js';
-import { ArrowRight, CheckCircle2, Download, FileText, Loader2, LockKeyhole, Send, ShieldAlert, Sparkles } from 'lucide-react';
+import { ArrowRight, CheckCircle2, FileText, Loader2, LockKeyhole, Send, ShieldAlert, Sparkles } from 'lucide-react';
 
 export interface Question {
   id: number;
@@ -98,37 +98,6 @@ export const ExamPortal: React.FC<ExamPortalProps> = ({
 
   const isFormComplete = questions.length > 0 && questions.every((q) => selectedAnswers[q.id]);
 
-  const handleDownloadBackupKey = () => {
-    const chosenAnswers = questions.map((q) => selectedAnswers[q.id] || 'N/A');
-    const storedStr = localStorage.getItem(`student_exam_${examId}`);
-    let backupPayload: any = null;
-
-    if (storedStr) {
-      try {
-        backupPayload = JSON.parse(storedStr);
-      } catch (e) {}
-    }
-
-    if (!backupPayload) {
-      const studentSalt = ethers.hexlify(ethers.randomBytes(32));
-      backupPayload = {
-        examId,
-        nullifierHash: identity.commitment.toString(),
-        studentSalt,
-        chosenAnswers,
-        submittedAt: new Date().toISOString(),
-      };
-    }
-
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupPayload, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `priv-o-test-backup-exam-${examId}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-  };
-
   const handleSubmitExam = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isFormComplete) {
@@ -163,29 +132,14 @@ export const ExamPortal: React.FC<ExamPortalProps> = ({
       let generatedProof: SemaphoreProof;
       try {
         generatedProof = await generateProof(
-          identity,
-          group,
-          answerHashBigInt.toString(),
-          examId,
-          12,
-          {
-            zkey: '/artifacts/semaphore-12.zkey',
-            wasm: '/artifacts/semaphore-12.wasm',
-          }
+          identity, group, answerHashBigInt.toString(), examId, 12,
+          { zkey: '/artifacts/semaphore-12.zkey', wasm: '/artifacts/semaphore-12.wasm' }
         );
       } catch (zkErr: any) {
-        console.warn('ZK Snark generation fallback to mock proof shape:', zkErr);
-        generatedProof = {
-          merkleTreeDepth: 12,
-          merkleTreeRoot: group.root.toString(),
-          nullifier: identity.commitment.toString(),
-          message: answerHashBigInt.toString(),
-          scope: examId,
-          points: [
-            '0x123', '0x456', '0x789', '0xabc',
-            '0xdef', '0x111', '0x222', '0x333'
-          ]
-        } as SemaphoreProof;
+        console.error('ZK proof generation failed:', zkErr);
+        setErrorMsg('Failed to generate your anonymous proof. Please try again — do not resubmit until this succeeds.');
+        setIsSubmitting(false);
+        return;
       }
 
       const nullifierHash = generatedProof.nullifier.toString();
@@ -203,9 +157,9 @@ export const ExamPortal: React.FC<ExamPortalProps> = ({
 
       setStatusMessage('Dispatching anonymous submission to network relayer...');
 
-      // 5. Relayer Dispatch
+      let relayerResponse: Response;
       try {
-        await fetch('http://127.0.0.1:3099/submit', {
+        relayerResponse = await fetch('http://127.0.0.1:3099/submit', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -215,8 +169,20 @@ export const ExamPortal: React.FC<ExamPortalProps> = ({
             answerHash: rawAnswerHash,
           }),
         });
-      } catch (relayerErr) {
-        console.warn('Relayer server offline. Storing submission locally for score evaluation.', relayerErr);
+      } catch (relayerErr: any) {
+        console.error('Relayer unreachable:', relayerErr);
+        setErrorMsg('Could not reach the submission server. Your exam was NOT submitted — please check your connection and try again.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      const relayerData = await relayerResponse.json();
+
+      if (!relayerResponse.ok || !relayerData.success) {
+        console.error('Relayer rejected submission:', relayerData);
+        setErrorMsg(relayerData.message || 'Submission was rejected by the server. Your exam was NOT recorded.');
+        setIsSubmitting(false);
+        return;
       }
 
       setStatusMessage('Submission confirmed! Navigating to Score Reveal...');
@@ -301,38 +267,24 @@ export const ExamPortal: React.FC<ExamPortalProps> = ({
         </div>
 
         <div style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button
-              type="submit"
-              className="primary-button"
-              disabled={!isFormComplete || isSubmitting}
-              style={{ flex: 1, justifyContent: 'center' }}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 size={18} className="spin" />
-                  <span>{statusMessage}</span>
-                </>
-              ) : (
-                <>
-                  <Send size={18} />
-                  <span>Submit Exam Anonymously</span>
-                </>
-              )}
-            </button>
-
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={handleDownloadBackupKey}
-              disabled={!isFormComplete}
-              title="Download local JSON backup key containing studentSalt, nullifierHash, and chosenAnswers"
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e2e8f0', cursor: 'pointer' }}
-            >
-              <Download size={16} />
-              <span>Backup Key</span>
-            </button>
-          </div>
+          <button
+            type="submit"
+            className="primary-button"
+            disabled={!isFormComplete || isSubmitting}
+            style={{ width: '100%', justifyContent: 'center' }}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 size={18} className="spin" />
+                <span>{statusMessage}</span>
+              </>
+            ) : (
+              <>
+                <Send size={18} />
+                <span>Submit Exam Anonymously</span>
+              </>
+            )}
+          </button>
 
           <div style={{ fontSize: '0.8rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
             <LockKeyhole size={14} />
