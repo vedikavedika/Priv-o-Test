@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Identity, Group, generateProof, SemaphoreProof } from '@semaphore-protocol/core';
 import { ethers } from 'ethers';
 import { examGroupManager } from '../groupManager.js';
-import { ArrowRight, CheckCircle2, FileText, Loader2, LockKeyhole, Send, ShieldAlert, Sparkles } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Download, FileText, Loader2, LockKeyhole, Send, ShieldAlert, Sparkles } from 'lucide-react';
 
 export interface Question {
   id: number;
@@ -34,7 +34,6 @@ export const ExamPortal: React.FC<ExamPortalProps> = ({
       .then((data: Question[]) => setQuestions(data))
       .catch((err) => {
         console.error('Failed to load questions:', err);
-        // Fallback default questions
         setQuestions([
           {
             id: 1,
@@ -99,6 +98,37 @@ export const ExamPortal: React.FC<ExamPortalProps> = ({
 
   const isFormComplete = questions.length > 0 && questions.every((q) => selectedAnswers[q.id]);
 
+  const handleDownloadBackupKey = () => {
+    const chosenAnswers = questions.map((q) => selectedAnswers[q.id] || 'N/A');
+    const storedStr = localStorage.getItem(`student_exam_${examId}`);
+    let backupPayload: any = null;
+
+    if (storedStr) {
+      try {
+        backupPayload = JSON.parse(storedStr);
+      } catch (e) {}
+    }
+
+    if (!backupPayload) {
+      const studentSalt = ethers.hexlify(ethers.randomBytes(32));
+      backupPayload = {
+        examId,
+        nullifierHash: identity.commitment.toString(),
+        studentSalt,
+        chosenAnswers,
+        submittedAt: new Date().toISOString(),
+      };
+    }
+
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupPayload, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `priv-o-test-backup-exam-${examId}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
   const handleSubmitExam = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isFormComplete) {
@@ -117,7 +147,7 @@ export const ExamPortal: React.FC<ExamPortalProps> = ({
       // 2. Generate random 32-byte hex salt for student
       const studentSalt = ethers.hexlify(ethers.randomBytes(32));
 
-      // 3. Compute answerHash = keccak256(abi.encodePacked(chosenAnswers, studentSalt))
+      // 3. Compute answerHash = keccak256(abi.encode(chosenAnswers, studentSalt))
       const abiCoder = ethers.AbiCoder.defaultAbiCoder();
       const encodedAnswers = abiCoder.encode(['string[]', 'bytes32'], [chosenAnswers, studentSalt]);
       const rawAnswerHash = ethers.keccak256(encodedAnswers);
@@ -145,7 +175,6 @@ export const ExamPortal: React.FC<ExamPortalProps> = ({
         );
       } catch (zkErr: any) {
         console.warn('ZK Snark generation fallback to mock proof shape:', zkErr);
-        // Fallback simulated proof shape if zkey asset path is restricted in test sandbox
         generatedProof = {
           merkleTreeDepth: 12,
           merkleTreeRoot: group.root.toString(),
@@ -272,24 +301,38 @@ export const ExamPortal: React.FC<ExamPortalProps> = ({
         </div>
 
         <div style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <button
-            type="submit"
-            className="primary-button"
-            disabled={!isFormComplete || isSubmitting}
-            style={{ width: '100%', justifyContent: 'center' }}
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 size={18} className="spin" />
-                <span>{statusMessage}</span>
-              </>
-            ) : (
-              <>
-                <Send size={18} />
-                <span>Submit Exam Anonymously</span>
-              </>
-            )}
-          </button>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              type="submit"
+              className="primary-button"
+              disabled={!isFormComplete || isSubmitting}
+              style={{ flex: 1, justifyContent: 'center' }}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 size={18} className="spin" />
+                  <span>{statusMessage}</span>
+                </>
+              ) : (
+                <>
+                  <Send size={18} />
+                  <span>Submit Exam Anonymously</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={handleDownloadBackupKey}
+              disabled={!isFormComplete}
+              title="Download local JSON backup key containing studentSalt, nullifierHash, and chosenAnswers"
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e2e8f0', cursor: 'pointer' }}
+            >
+              <Download size={16} />
+              <span>Backup Key</span>
+            </button>
+          </div>
 
           <div style={{ fontSize: '0.8rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
             <LockKeyhole size={14} />
