@@ -10,7 +10,8 @@
     "compile": "hardhat compile",
     "deploy:sepolia": "hardhat run scripts/deploy.ts --network sepolia",
     "demo:cli": "tsx scripts/demoSteps123.ts",
-    "test:exam": "hardhat run scripts/testExamFlow.ts"
+    "test:exam": "hardhat run scripts/testExamFlow.ts",
+    "server": "tsx server/index.ts"
   },
   "dependencies": {
     "@semaphore-protocol/contracts": "^4.14.3",

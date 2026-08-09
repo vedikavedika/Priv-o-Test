@@ -13,17 +13,23 @@ export const Step1LoginGate: React.FC<Step1LoginGateProps> = ({ onSuccess }) => 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     setIsSubmitting(true);
 
-    const result = universityDb.authenticateStudent(email, password);
-    window.setTimeout(() => {
+    try {
+      const result = await universityDb.authenticateStudent(email, password);
       setIsSubmitting(false);
-      if (result.success && result.student) onSuccess(result.student);
-      else setErrorMsg(result.message);
-    }, 350);
+      if (result.success && result.student) {
+        onSuccess(result.student);
+      } else {
+        setErrorMsg(result.message || "Authentication failed");
+      }
+    } catch (err: any) {
+      setIsSubmitting(false);
+      setErrorMsg("Failed to connect to authentication server at http://localhost:3001");
+    }
   };
 
   const handleQuickFill = (demoEmail: string) => {
@@ -77,7 +83,7 @@ export const Step1LoginGate: React.FC<Step1LoginGateProps> = ({ onSuccess }) => 
       </form>
 
       <div className="demo-section">
-        <div className="demo-label">Demo accounts (10 Enrolled Students)</div>
+        <div className="demo-label">Demo accounts (25 Enrolled Students)</div>
         <div className="demo-grid">
           {[
             'alice@university.edu',
@@ -89,7 +95,22 @@ export const Step1LoginGate: React.FC<Step1LoginGateProps> = ({ onSuccess }) => 
             'george@university.edu',
             'hannah@university.edu',
             'ian@university.edu',
-            'julia@university.edu'
+            'julia@university.edu',
+            'kevin@university.edu',
+            'laura@university.edu',
+            'michael@university.edu',
+            'nina@university.edu',
+            'oscar@university.edu',
+            'pamela@university.edu',
+            'quentin@university.edu',
+            'rachel@university.edu',
+            'steven@university.edu',
+            'tina@university.edu',
+            'uma@university.edu',
+            'victor@university.edu',
+            'walter@university.edu',
+            'xena@university.edu',
+            'yennefer@university.edu',
           ].map((account) => (
             <button key={account} className="demo-account" onClick={() => handleQuickFill(account)} type="button">
               <span className="avatar">{account[0].toUpperCase()}</span>

@@ -154,7 +154,7 @@ export const ExamPortal: React.FC<ExamPortalProps> = ({
       const answerHashBigInt = BigInt(rawAnswerHash);
 
       setStatusMessage('Rebuilding Semaphore Merkle tree...');
-      const rawLeaves = examGroupManager.getPublicGroupLeaves();
+      const rawLeaves = await examGroupManager.getPublicGroupLeaves();
       const commitmentsList = rawLeaves.map((leaf) => BigInt(leaf));
       const group = new Group(commitmentsList);
 

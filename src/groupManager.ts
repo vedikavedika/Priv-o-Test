@@ -26,83 +26,47 @@ export class ExamGroupManager {
 
   /**
    * Step 3 Core Endpoint Handler:
-   * 1. Verifies Web2 enrollment and registration status.
-   * 2. Adds identity.commitment to the Semaphore Merkle Tree group.
-   * 3. Sets hasRegistered = true in Web2 DB.
-   * 4. DISCARDS the relationship between email and commitment (Link Broken!).
+   * Delegates registration to backend server at http://localhost:3001/join
    */
-  public registerStudentCommitment(email: string, identityCommitment: string | bigint): RegistrationResult {
-    const cleanEmail = email.toLowerCase().trim();
-
-    // 1. Verify Web2 Authentication & Course Enrollment
-    const authResult = universityDb.authenticateStudent(cleanEmail);
-    if (!authResult.success) {
+  public async registerStudentCommitment(email: string, identityCommitment: string | bigint): Promise<RegistrationResult> {
+    try {
+      const response = await fetch('http://localhost:3001/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          identityCommitment: identityCommitment.toString(),
+        }),
+      });
+      const data = await response.json();
+      return {
+        success: data.success,
+        message: data.message,
+        groupRoot: data.groupRoot,
+        totalGroupMembers: data.totalMembers,
+      };
+    } catch (err: any) {
       return {
         success: false,
-        message: `[REJECTED] ${authResult.message}`,
+        message: `[ERROR] Failed to connect to server: ${err?.message || err}`,
       };
     }
-
-    // 2. Check if student has already registered a commitment
-    if (universityDb.hasStudentRegistered(cleanEmail)) {
-      return {
-        success: false,
-        message: `[REJECTED] Double-registration blocked: ${cleanEmail} has already registered a commitment leaf!`,
-      };
-    }
-
-    // 3. Convert commitment to BigInt leaf for Semaphore group
-    const commitmentLeaf = BigInt(identityCommitment);
-
-    // Check if commitment is already in the Merkle Tree (prevent identical leaf collision)
-    if (this.group.indexOf(commitmentLeaf) !== -1) {
-      return {
-        success: false,
-        message: `[REJECTED] Commitment leaf already exists in Semaphore group tree!`,
-      };
-    }
-
-    // 4. Add identity.commitment leaf into the Semaphore Merkle Tree Group
-    this.group.addMember(commitmentLeaf);
-    const memberIndex = this.group.indexOf(commitmentLeaf);
-
-    // 5. Update Web2 University DB: mark hasRegistered = true
-    universityDb.markAsRegistered(cleanEmail);
-
-    // 6. LINK BREAKING GUARANTEE:
-    // The server does NOT store `(cleanEmail -> commitmentLeaf)`.
-    // The Web2 DB only stores `hasRegistered: true`.
-    // The Semaphore Group only holds `commitmentLeaf` as an un-owned node in the Merkle Tree.
-
-    return {
-      success: true,
-      message: `[SUCCESS] Registered! Commitment added to Merkle tree group. Web2 link broken for ${cleanEmail}.`,
-      groupRoot: this.group.root.toString(),
-      memberIndex,
-      totalGroupMembers: this.group.members.length,
-    };
   }
 
   /**
-   * Get public group Merkle root
+   * List all commitment leaves from the backend server http://localhost:3001/group
    */
-  public getGroupRoot(): string {
-    return this.group.root.toString();
-  }
-
-  /**
-   * Get full Semaphore Group instance (used for generating client ZK proofs)
-   */
-  public getGroup(): Group {
-    return this.group;
-  }
-
-  /**
-   * List all commitment leaves in the tree (WITHOUT any student names/emails attached)
-   */
-  public getPublicGroupLeaves(): string[] {
-    return this.group.members.map((member) => member.toString());
+  public async getPublicGroupLeaves(): Promise<string[]> {
+    try {
+      const res = await fetch('http://localhost:3001/group');
+      const data = await res.json();
+      return data.members || [];
+    } catch (err) {
+      console.error('Failed to fetch group members from server:', err);
+      return [];
+    }
   }
 }
 
 export const examGroupManager = new ExamGroupManager();
+

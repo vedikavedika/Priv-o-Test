@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Identity, Group, generateProof, SemaphoreProof } from '@semaphore-protocol/core';
-import { examGroupManager } from '../groupManager.js';
-import { ArrowRight, Check, FileCheck2, Fingerprint, GitBranch, Loader2, LockKeyhole, ShieldCheck, Users } from 'lucide-react';
+import { ArrowRight, Check, FileCheck2, Fingerprint, GitBranch, Loader2, LockKeyhole, ShieldCheck, Users, RotateCcw } from 'lucide-react';
 
 interface Step3ProofGenerationProps {
   studentEmail: string;
@@ -16,37 +15,60 @@ export const Step3ProofGeneration: React.FC<Step3ProofGenerationProps> = ({ stud
   const [proof, setProof] = useState<SemaphoreProof | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [joiningStatus, setJoiningStatus] = useState<string>('');
+  const [groupMembers, setGroupMembers] = useState<string[]>([]);
+
+  const fetchGroupMembers = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/group');
+      const data = await res.json();
+      if (data.members && Array.isArray(data.members)) {
+        setGroupMembers(data.members);
+      }
+    } catch (err) {
+      console.error('Failed to fetch shared group state from backend:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchGroupMembers();
+  }, []);
 
   const handleJoinGroup = async () => {
     setErrorMsg(null);
     setIsJoining(true);
-    setJoiningStatus('Verifying Web2 student eligibility...');
+    setJoiningStatus('Verifying student eligibility & registering commitment leaf on server...');
 
     try {
-      // 1. Local link breaking registration
-      const localResult = examGroupManager.registerStudentCommitment(studentEmail, identity.commitment);
-      if (!localResult.success) {
-        throw new Error(localResult.message);
+      // 1. Join request to shared backend server
+      const res = await fetch('http://localhost:3001/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: studentEmail,
+          identityCommitment: identity.commitment.toString(),
+        }),
+      });
+
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.message || 'Failed to join exam group.');
       }
 
-      setJoiningStatus('Dispatching commitment to Relayer & awaiting on-chain block confirmation...');
+      setJoiningStatus('Fetching updated shared Merkle tree state...');
+      await fetchGroupMembers();
 
-      // 2. Relayer dispatch & await block receipt confirmation to prevent Merkle Root Desync
+      // 2. Relayer dispatch fallback if relayer service is running
       try {
-        const res = await fetch('http://127.0.0.1:3099/join', {
+        await fetch('http://127.0.0.1:3099/join', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ identityCommitment: identity.commitment.toString() })
         });
-        const data = await res.json();
-        if (!data.success && data.error && !data.error.includes("AlreadyJoined")) {
-          console.warn('Relayer join notification warning:', data.error);
-        }
       } catch (relayerErr) {
-        console.warn('Relayer server offline during join; using synced local Merkle state.', relayerErr);
+        // Optional relayer service, safe to ignore
       }
 
-      setJoiningStatus('Block confirmed! Merkle tree root synchronized on-chain.');
+      setJoiningStatus('Group joined! Shared Merkle tree root synchronized.');
       setIsJoined(true);
     } catch (err: any) {
       console.error('Join error:', err);
@@ -62,9 +84,13 @@ export const Step3ProofGeneration: React.FC<Step3ProofGenerationProps> = ({ stud
     setProof(null);
     try {
       await new Promise((resolve) => setTimeout(resolve, 50));
-      // Re-fetch exact confirmed Merkle tree leaves after block confirmation
-      const rawLeaves = examGroupManager.getPublicGroupLeaves();
-      const commitmentsList = rawLeaves.map((leaf) => BigInt(leaf));
+      // Re-fetch exact confirmed Merkle tree leaves from server immediately before proving
+      const res = await fetch('http://localhost:3001/group');
+      const data = await res.json();
+      const members: string[] = data.members || [];
+      setGroupMembers(members);
+
+      const commitmentsList = members.map((leaf) => BigInt(leaf));
       const freshGroup = new Group(commitmentsList);
       const generatedProof = await generateProof(
         identity,
@@ -87,7 +113,31 @@ export const Step3ProofGeneration: React.FC<Step3ProofGenerationProps> = ({ stud
     }
   };
 
-  const memberCount = examGroupManager.getPublicGroupLeaves().length;
+  const handleAdminReset = async () => {
+    const adminKey = window.prompt('Enter Admin Key to reset registration state:');
+    if (!adminKey) return;
+
+    try {
+      const res = await fetch('http://localhost:3001/admin/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminKey }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Reset successful! All student registrations cleared and pre-seeded anonymity floor of 8 restored.');
+        setIsJoined(false);
+        setProof(null);
+        await fetchGroupMembers();
+      } else {
+        alert('Admin reset failed: ' + (data.message || 'Invalid admin key.'));
+      }
+    } catch (err: any) {
+      alert('Error connecting to admin reset endpoint: ' + err.message);
+    }
+  };
+
+  const memberCount = groupMembers.length;
 
   return (
     <div className="screen-content">
@@ -112,13 +162,22 @@ export const Step3ProofGeneration: React.FC<Step3ProofGenerationProps> = ({ stud
       {!isJoined ? (
         <div className="join-card">
           <div className="join-visual"><GitBranch size={25} /><div className="leaf-dot" /><div className="leaf-dot second" /><div className="leaf-dot third" /></div>
-          <div className="join-copy"><div className="mini-label">EXAM GROUP</div><h3>CS101 Final Exam · 2026</h3><p>Your public commitment will become one leaf in the Semaphore Merkle tree. The Web2 record only knows that registration is complete.</p></div>
-          <div className="join-stats"><div><Users size={15} /><span>{memberCount} members</span></div><div><LockKeyhole size={15} /><span>Identity hidden</span></div></div>
+          <div className="join-copy"><div className="mini-label">EXAM GROUP</div><h3>CS101 Final Exam · 2026</h3><p>Your public commitment will become one leaf in the shared Semaphore Merkle tree. The Web2 record only knows that registration is complete.</p></div>
+          <div className="join-stats">
+            <div>
+              <Users size={15} />
+              <span>Group size: <strong>{memberCount}</strong> members</span>
+            </div>
+            <div>
+              <LockKeyhole size={15} />
+              <span>Identity hidden</span>
+            </div>
+          </div>
           <button className="primary-button green-button" onClick={handleJoinGroup} disabled={isJoining}>
             {isJoining ? (
               <>
                 <Loader2 size={17} className="spin" />
-                <span>{joiningStatus || 'Awaiting block confirmation...'}</span>
+                <span>{joiningStatus || 'Updating server Merkle tree...'}</span>
               </>
             ) : (
               <>
@@ -130,12 +189,22 @@ export const Step3ProofGeneration: React.FC<Step3ProofGenerationProps> = ({ stud
         </div>
       ) : (
         <div className="proof-area">
-          <div className="joined-banner"><div className="joined-icon"><Check size={17} /></div><div><strong>You're in the group anonymously</strong><span>{memberCount} registered member{memberCount === 1 ? '' : 's'} · email-to-commitment link is not retained</span></div><div className="joined-tag">GROUP MEMBER</div></div>
+          <div className="joined-banner">
+            <div className="joined-icon"><Check size={17} /></div>
+            <div>
+              <strong>You're in the group anonymously</strong>
+              <span>Group size: <strong>{memberCount}</strong> registered member{memberCount === 1 ? '' : 's'} · email-to-commitment link is not retained</span>
+            </div>
+            <div className="joined-tag">GROUP MEMBER</div>
+          </div>
 
           {!proof && (
             <div className="generate-card">
               <div className="generate-icon"><Fingerprint size={23} /></div>
-              <div className="generate-copy"><h3>Generate a zero-knowledge membership proof</h3><p>Prove that your secret identity belongs to the exam group. The verifier learns membership, not your student identity.</p></div>
+              <div className="generate-copy">
+                <h3>Generate a zero-knowledge membership proof</h3>
+                <p>Prove that your secret identity belongs to the shared exam group ({memberCount} members). The verifier learns membership, not your student identity.</p>
+              </div>
               <button className="primary-button" onClick={handleGenerateMembershipProof} disabled={isProving}>{isProving ? <><Loader2 size={17} className="spin" /> Computing proof…</> : <><FileCheck2 size={17} /> Generate proof</>}</button>
             </div>
           )}
@@ -165,6 +234,29 @@ export const Step3ProofGeneration: React.FC<Step3ProofGenerationProps> = ({ stud
           )}
         </div>
       )}
+
+      <div style={{ marginTop: '16px', textAlign: 'center' }}>
+        <button
+          type="button"
+          onClick={handleAdminReset}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: 'rgba(255,255,255,0.4)',
+            fontSize: '0.75rem',
+            cursor: 'pointer',
+            textDecoration: 'underline',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}
+          title="Admin tool to reset demo registrations"
+        >
+          <RotateCcw size={12} />
+          <span>Admin Reset State</span>
+        </button>
+      </div>
     </div>
   );
 };
+

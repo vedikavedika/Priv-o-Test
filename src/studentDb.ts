@@ -39,39 +39,34 @@ class UniversityDatabase {
   }
 
   /**
-   * Step 1 Verification: Check email + password & course enrollment
+   * Step 1 Verification: Calls backend server POST /login
    */
-  public authenticateStudent(email: string, password?: string): { success: boolean; student?: Omit<StudentRecord, 'password' | 'hasRegistered'>; message: string } {
-    const record = this.students.get(email.toLowerCase().trim());
-
-    if (!record) {
-      return { success: false, message: "Authentication Failed: Student email not found." };
+  public async authenticateStudent(
+    email: string,
+    password?: string
+  ): Promise<{ success: boolean; student?: Omit<StudentRecord, 'password' | 'hasRegistered'>; message: string }> {
+    try {
+      const response = await fetch('http://localhost:3001/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await response.json();
+      return data;
+    } catch (err: any) {
+      console.error('Backend login request error:', err);
+      return {
+        success: false,
+        message: 'Authentication Failed: Unable to connect to backend server at http://localhost:3001',
+      };
     }
-
-    if (password && record.password !== password) {
-      return { success: false, message: "Authentication Failed: Invalid password." };
-    }
-
-    if (!record.isEnrolled) {
-      return { success: false, message: "Authentication Failed: Student is not enrolled." };
-    }
-
-    return {
-      success: true,
-      student: { id: record.id, name: record.name, email: record.email, isEnrolled: record.isEnrolled },
-      message: "Web2 Authentication Successful. Enrolled student verified.",
-    };
   }
 
-  public hasStudentRegistered(email: string): boolean {
-    const record = this.students.get(email.toLowerCase().trim());
-    return record ? record.hasRegistered : false;
+  public hasStudentRegistered(_email: string): boolean {
+    return false;
   }
 
-  public markAsRegistered(email: string): boolean {
-    const record = this.students.get(email.toLowerCase().trim());
-    if (!record) return false;
-    record.hasRegistered = true;
+  public markAsRegistered(_email: string): boolean {
     return true;
   }
 
@@ -81,3 +76,4 @@ class UniversityDatabase {
 }
 
 export const universityDb = new UniversityDatabase();
+
