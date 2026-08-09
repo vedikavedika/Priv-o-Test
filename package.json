@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "compile": "hardhat compile",
     "deploy:sepolia": "hardhat run scripts/deploy.ts --network sepolia",
-    "demo:cli": "tsx scripts/demoSteps123.ts"
+    "demo:cli": "tsx scripts/demoSteps123.ts",
+    "test:exam": "hardhat run scripts/testExamFlow.ts"
   },
   "dependencies": {
     "@semaphore-protocol/contracts": "^4.14.3",
@@ -17,13 +18,18 @@
     "@semaphore-protocol/group": "^4.14.3",
     "@semaphore-protocol/identity": "^4.14.3",
     "@semaphore-protocol/proof": "^4.14.3",
+    "cors": "^2.8.6",
     "ethers": "^6.13.0",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.6.2",
     "lucide-react": "^0.427.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
     "@types/node": "^20.14.10",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
