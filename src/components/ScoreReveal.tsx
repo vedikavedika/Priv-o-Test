@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ethers } from 'ethers';
-import { Award, Check, CheckCircle2, Clock, Key, RefreshCw, ShieldCheck, Sparkles, XCircle } from 'lucide-react';
+import { Award, Check, CheckCircle2, Clock, Key, Loader2, ShieldCheck, Sparkles, XCircle } from 'lucide-react';
 import { Question } from './ExamPortal.js';
 
 interface ScoreRevealProps {
@@ -48,14 +47,8 @@ export const ScoreReveal: React.FC<ScoreRevealProps> = ({
       .catch((err) => console.error('Failed to load questions:', err));
   }, [examId]);
 
-  // Check on-chain exam status / reveal simulation
-  const handleTeacherRevealKey = () => {
-    setIsExamEnded(true);
-    setCorrectAnswers(DEFAULT_CORRECT_ANSWERS);
-  };
-
-  const handleEvaluateScoreOnChain = async () => {
-    if (!chosenAnswers.length || !studentSalt) {
+  const handleRequestReveal = async () => {
+    if (!nullifierHash || !chosenAnswers.length || !studentSalt) {
       setErrorMsg('No local submission record found in browser storage.');
       return;
     }
@@ -64,23 +57,53 @@ export const ScoreReveal: React.FC<ScoreRevealProps> = ({
     setErrorMsg(null);
 
     try {
-      // Calculate local score check
-      let calculatedScore = 0;
-      const targetAnswers = correctAnswers.length > 0 ? correctAnswers : DEFAULT_CORRECT_ANSWERS;
-      chosenAnswers.forEach((ans, idx) => {
-        if (ans === targetAnswers[idx]) calculatedScore++;
+      const response = await fetch('http://127.0.0.1:3099/reveal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nullifierHash,
+          chosenAnswers,
+          studentSalt,
+        }),
       });
 
-      // Simulate on-chain contract evaluateScore call
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      const data = await response.json();
 
-      setScore(calculatedScore);
+      if (!response.ok || !data.success) {
+        // Handle the specific cases the relayer returns:
+        // 403 = deadline not passed yet, 404 = no submission found,
+        // 409 = already revealed, 400 = hash mismatch
+        setErrorMsg(data.message || 'Reveal request was rejected by the server.');
+        setIsEvaluating(false);
+        return;
+      }
+
+      // Server confirmed the reveal is valid — NOW it's safe to show results
+      setIsExamEnded(true);
+      setCorrectAnswers(DEFAULT_CORRECT_ANSWERS); // scoring against the
+        // known answer key still happens locally, since the relayer's
+        // job is verifying the submission is genuine, not grading it
     } catch (err: any) {
-      console.error('Score evaluation error:', err);
-      setErrorMsg(err?.message || 'Failed to evaluate score.');
+      console.error('Reveal request failed:', err);
+      setErrorMsg('Could not reach the reveal server. Please check your connection and try again.');
     } finally {
       setIsEvaluating(false);
     }
+  };
+
+  const handleCalculateScore = () => {
+    if (!chosenAnswers.length) {
+      setErrorMsg('No local submission record found in browser storage.');
+      return;
+    }
+
+    let calculatedScore = 0;
+    const targetAnswers = correctAnswers.length > 0 ? correctAnswers : DEFAULT_CORRECT_ANSWERS;
+    chosenAnswers.forEach((ans, idx) => {
+      if (ans === targetAnswers[idx]) calculatedScore++;
+    });
+
+    setScore(calculatedScore);
   };
 
   return (
@@ -100,19 +123,29 @@ export const ScoreReveal: React.FC<ScoreRevealProps> = ({
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px' }}>
             <Clock size={36} color="#eab308" />
           </div>
-          <h3 style={{ color: '#fef08a', marginBottom: '8px' }}>Exam in progress</h3>
+          <h3 style={{ color: '#fef08a', marginBottom: '8px' }}>Exam in progress / Reveal Locked</h3>
           <p style={{ color: '#cbd5e1', fontSize: '0.9rem', marginBottom: '16px' }}>
-            Scores will unlock after the teacher reveals the official answer key on-chain.
+            Submission verification and score reveal require authorization from the network relayer server once the exam deadline passes.
           </p>
 
           <button
             type="button"
             className="primary-button"
-            onClick={handleTeacherRevealKey}
+            onClick={handleRequestReveal}
+            disabled={isEvaluating}
             style={{ margin: '0 auto', background: 'linear-gradient(135deg, #d97706, #b45309)' }}
           >
-            <Key size={16} />
-            <span>[Teacher Demo] Reveal Answer Key On-Chain</span>
+            {isEvaluating ? (
+              <>
+                <Loader2 size={16} className="spin" />
+                <span>Contacting Relayer Server...</span>
+              </>
+            ) : (
+              <>
+                <Key size={16} />
+                <span>Request Reveal from Exam Server</span>
+              </>
+            )}
           </button>
         </div>
       ) : (
@@ -120,25 +153,17 @@ export const ScoreReveal: React.FC<ScoreRevealProps> = ({
           <div className="score-summary-card" style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.15), rgba(5,150,105,0.05))', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '16px', padding: '24px', textAlign: 'center' }}>
             {score === null ? (
               <div>
-                <div style={{ fontSize: '1rem', color: '#a7f3d0', marginBottom: '12px' }}>Answer key is live on-chain!</div>
+                <div style={{ fontSize: '1rem', color: '#a7f3d0', marginBottom: '12px' }}>
+                  Submission reveal verified by exam server!
+                </div>
                 <button
                   type="button"
                   className="primary-button green-button"
-                  onClick={handleEvaluateScoreOnChain}
-                  disabled={isEvaluating}
+                  onClick={handleCalculateScore}
                   style={{ margin: '0 auto' }}
                 >
-                  {isEvaluating ? (
-                    <>
-                      <RefreshCw size={18} className="spin" />
-                      <span>Evaluating score on-chain...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles size={18} />
-                      <span>Evaluate & Reveal Score</span>
-                    </>
-                  )}
+                  <Sparkles size={18} />
+                  <span>Calculate My Score</span>
                 </button>
               </div>
             ) : (
@@ -209,7 +234,7 @@ export const ScoreReveal: React.FC<ScoreRevealProps> = ({
 
           <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '12px 16px', fontSize: '0.8rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <ShieldCheck size={16} color="#10b981" />
-            <span>Score calculated on-chain using nullifier <code>{nullifierHash.slice(0, 14)}...</code> without revealing student identity.</span>
+            <span>Reveal verified by the exam server using nullifier <code>{nullifierHash.slice(0, 14)}...</code> without revealing student identity.</span>
           </div>
         </div>
       )}
