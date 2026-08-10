@@ -109,7 +109,10 @@ app.post('/submit', (req, res) => {
       submittedAt: Date.now(),
     });
 
-    console.log(`[${new Date().toISOString()}] POST /submit SUCCESS: Submission stored for nullifier ${nullifierHash}`);
+    // Reset the exam deadline timer to a fresh 4-minute lock starting from submission time
+    deadline = Date.now() + DEFAULT_DEADLINE_DURATION_MS;
+
+    console.log(`[${new Date().toISOString()}] POST /submit SUCCESS: Submission stored for nullifier ${nullifierHash}. Deadline reset to 4 minutes from now (${new Date(deadline).toISOString()}).`);
     return res.json({ success: true, message: 'Submission received anonymously.' });
   } catch (err: any) {
     console.error(`[${new Date().toISOString()}] Error in POST /submit:`, err);
