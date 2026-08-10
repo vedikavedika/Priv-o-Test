@@ -4,9 +4,9 @@ import rateLimit from 'express-rate-limit';
 import { ethers } from 'ethers';
 
 const EXAM_ID = process.env.EXAM_ID || '101';
-// Deadline set at server startup (default now + 30 minutes, or EXAM_DEADLINE env var timestamp)
-const DEFAULT_DEADLINE_DURATION_MS = 30 * 60 * 1000;
-const deadline = process.env.EXAM_DEADLINE
+// Deadline set at server startup (default now + 4 minutes, or EXAM_DEADLINE env var timestamp)
+const DEFAULT_DEADLINE_DURATION_MS = 4 * 60 * 1000;
+let deadline = process.env.EXAM_DEADLINE
   ? Number(process.env.EXAM_DEADLINE)
   : Date.now() + DEFAULT_DEADLINE_DURATION_MS;
 
@@ -195,6 +195,25 @@ app.get('/status', (_req, res) => {
     examId: EXAM_ID,
     timeUntilDeadlineMs: Math.max(0, deadline - Date.now()),
   });
+});
+
+// 6. POST /admin/skip-deadline
+app.post('/admin/skip-deadline', (req, res) => {
+  try {
+    const { adminKey } = req.body || {};
+    const expectedKey = process.env.ADMIN_KEY || 'demo-reset-2026';
+
+    if (adminKey !== expectedKey) {
+      return res.status(401).json({ success: false, message: 'Invalid admin key.' });
+    }
+
+    deadline = Date.now() - 1;
+    console.log(`[${new Date().toISOString()}] POST /admin/skip-deadline SUCCESS: Deadline set into past (${deadline})`);
+    return res.json({ success: true, message: 'Deadline skipped, reveal unlocked.' });
+  } catch (err: any) {
+    console.error(`[${new Date().toISOString()}] Error in POST /admin/skip-deadline:`, err);
+    return res.status(500).json({ success: false, message: err?.message || 'Server error on skip deadline' });
+  }
 });
 
 const PORT = process.env.PORT || 3099;

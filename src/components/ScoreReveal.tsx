@@ -22,9 +22,32 @@ export const ScoreReveal: React.FC<ScoreRevealProps> = ({
   const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [remainingMs, setRemainingMs] = useState<number | null>(null);
 
   // Default correct answers for CS101 exam (["B", "B", "C", "C", "C"])
   const DEFAULT_CORRECT_ANSWERS = ["B", "B", "C", "C", "C"];
+
+  const fetchStatus = async () => {
+    try {
+      const res = await fetch('http://127.0.0.1:3099/status');
+      if (res.ok) {
+        const data = await res.json();
+        if (typeof data.timeUntilDeadlineMs === 'number') {
+          setRemainingMs(data.timeUntilDeadlineMs);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch status from relayer:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (isExamEnded) return;
+
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 2000);
+    return () => clearInterval(interval);
+  }, [isExamEnded]);
 
   useEffect(() => {
     // 1. Load stored submission data from localStorage
@@ -46,6 +69,39 @@ export const ScoreReveal: React.FC<ScoreRevealProps> = ({
       .then((data) => setQuestions(data))
       .catch((err) => console.error('Failed to load questions:', err));
   }, [examId]);
+
+  const formatTime = (ms: number) => {
+    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  };
+
+  const handleSkipDeadline = async () => {
+    const adminKey = window.prompt('Enter admin key to skip deadline:');
+    if (!adminKey) return;
+
+    setErrorMsg(null);
+    try {
+      const response = await fetch('http://127.0.0.1:3099/admin/skip-deadline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminKey }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        setErrorMsg(data.message || 'Invalid admin key.');
+        return;
+      }
+
+      await fetchStatus();
+    } catch (err: any) {
+      console.error('Skip deadline failed:', err);
+      setErrorMsg('Could not reach the server to skip deadline.');
+    }
+  };
 
   const handleRequestReveal = async () => {
     if (!nullifierHash || !chosenAnswers.length || !studentSalt) {
@@ -119,34 +175,68 @@ export const ScoreReveal: React.FC<ScoreRevealProps> = ({
       {errorMsg && <div className="error-banner">{errorMsg}</div>}
 
       {!isExamEnded ? (
-        <div className="status-banner" style={{ background: 'rgba(234, 179, 8, 0.1)', border: '1px solid rgba(234, 179, 8, 0.3)', borderRadius: '12px', padding: '20px', margin: '20px 0', textAlign: 'center' }}>
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px' }}>
-            <Clock size={36} color="#eab308" />
-          </div>
-          <h3 style={{ color: '#fef08a', marginBottom: '8px' }}>Exam in progress / Reveal Locked</h3>
-          <p style={{ color: '#cbd5e1', fontSize: '0.9rem', marginBottom: '16px' }}>
-            Submission verification and score reveal require authorization from the network relayer server once the exam deadline passes.
-          </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', margin: '20px 0' }}>
+          <div className="status-banner" style={{ background: 'rgba(234, 179, 8, 0.1)', border: '1px solid rgba(234, 179, 8, 0.3)', borderRadius: '12px', padding: '20px', textAlign: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px' }}>
+              <Clock size={36} color="#eab308" />
+            </div>
 
-          <button
-            type="button"
-            className="primary-button"
-            onClick={handleRequestReveal}
-            disabled={isEvaluating}
-            style={{ margin: '0 auto', background: 'linear-gradient(135deg, #d97706, #b45309)' }}
-          >
-            {isEvaluating ? (
+            <h3 style={{ color: '#fef08a', marginBottom: '8px' }}>
+              {remainingMs !== null && remainingMs <= 0
+                ? 'Deadline passed — ready to reveal'
+                : 'Exam in progress / Reveal Locked'}
+            </h3>
+
+            {remainingMs === null ? (
+              <p style={{ color: '#cbd5e1', fontSize: '0.9rem', marginBottom: '16px' }}>
+                Checking exam status...
+              </p>
+            ) : remainingMs > 0 ? (
               <>
-                <Loader2 size={16} className="spin" />
-                <span>Contacting Relayer Server...</span>
+                <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#fef08a', margin: '8px 0 12px', letterSpacing: '0.05em' }}>
+                  {formatTime(remainingMs)} remaining
+                </div>
+                <p style={{ color: '#cbd5e1', fontSize: '0.9rem', marginBottom: '16px' }}>
+                  Submission verification and score reveal require authorization from the network relayer server once the exam deadline passes.
+                </p>
               </>
             ) : (
-              <>
-                <Key size={16} />
-                <span>Request Reveal from Exam Server</span>
-              </>
+              <p style={{ color: '#cbd5e1', fontSize: '0.9rem', marginBottom: '16px' }}>
+                Deadline passed — ready to reveal. You can now request your verified score reveal from the server.
+              </p>
             )}
-          </button>
+
+            <button
+              type="button"
+              className="primary-button"
+              onClick={handleRequestReveal}
+              disabled={isEvaluating}
+              style={{ margin: '0 auto', background: 'linear-gradient(135deg, #d97706, #b45309)' }}
+            >
+              {isEvaluating ? (
+                <>
+                  <Loader2 size={16} className="spin" />
+                  <span>Contacting Relayer Server...</span>
+                </>
+              ) : (
+                <>
+                  <Key size={16} />
+                  <span>Request Reveal from Exam Server</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px dashed rgba(255, 255, 255, 0.1)', borderRadius: '10px', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem', color: '#94a3b8' }}>
+            <span>⚡ Admin Demo Controls</span>
+            <button
+              type="button"
+              onClick={handleSkipDeadline}
+              style={{ background: 'transparent', border: '1px solid rgba(255, 255, 255, 0.15)', borderRadius: '6px', color: '#cbd5e1', padding: '4px 10px', fontSize: '0.75rem', cursor: 'pointer', transition: 'all 0.15s ease' }}
+            >
+              Skip Deadline & Unlock Now (Demo Mode)
+            </button>
+          </div>
         </div>
       ) : (
         <div className="reveal-area" style={{ display: 'flex', flexDirection: 'column', gap: '20px', margin: '20px 0' }}>
