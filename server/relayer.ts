@@ -6,9 +6,9 @@ import { ethers } from 'ethers';
 const EXAM_ID = process.env.EXAM_ID || '101';
 // Deadline set at server startup (default now + 4 minutes, or EXAM_DEADLINE env var timestamp)
 const DEFAULT_DEADLINE_DURATION_MS = 4 * 60 * 1000;
-let deadline = process.env.EXAM_DEADLINE
+let deadline: number | null = process.env.EXAM_DEADLINE
   ? Number(process.env.EXAM_DEADLINE)
-  : Date.now() + DEFAULT_DEADLINE_DURATION_MS;
+  : null;
 
 interface SubmissionRecord {
   answerHash: string;
@@ -102,6 +102,11 @@ app.post('/submit', (req, res) => {
       });
     }
 
+    if (deadline === null) {
+      deadline = Date.now() + DEFAULT_DEADLINE_DURATION_MS;
+      console.log(`[${new Date().toISOString()}] First submission received — exam deadline locked in for ${new Date(deadline).toISOString()}.`);
+    }
+
     // Store submission
     submissions.set(nullifierHash, {
       answerHash,
@@ -109,10 +114,7 @@ app.post('/submit', (req, res) => {
       submittedAt: Date.now(),
     });
 
-    // Reset the exam deadline timer to a fresh 4-minute lock starting from submission time
-    deadline = Date.now() + DEFAULT_DEADLINE_DURATION_MS;
-
-    console.log(`[${new Date().toISOString()}] POST /submit SUCCESS: Submission stored for nullifier ${nullifierHash}. Deadline reset to 4 minutes from now (${new Date(deadline).toISOString()}).`);
+    console.log(`[${new Date().toISOString()}] POST /submit SUCCESS: Submission stored for nullifier ${nullifierHash}.`);
     return res.json({ success: true, message: 'Submission received anonymously.' });
   } catch (err: any) {
     console.error(`[${new Date().toISOString()}] Error in POST /submit:`, err);
@@ -125,8 +127,8 @@ app.post('/reveal', (req, res) => {
   try {
     const { nullifierHash, chosenAnswers, studentSalt } = req.body || {};
 
-    // Reject with 403 if Date.now() < deadline
-    if (Date.now() < deadline) {
+    // Reject with 403 if deadline is null or Date.now() < deadline
+    if (deadline === null || Date.now() < deadline) {
       return res.status(403).json({
         success: false,
         message: 'Reveal is locked until the exam deadline has passed.',
@@ -194,9 +196,10 @@ app.get('/status', (_req, res) => {
   return res.json({
     totalSubmissions: submissions.size,
     totalRevealed: revealedAnswers.size,
-    deadline,
+    deadline: deadline, // will be null until first submission
     examId: EXAM_ID,
-    timeUntilDeadlineMs: Math.max(0, deadline - Date.now()),
+    timeUntilDeadlineMs: deadline === null ? null : Math.max(0, deadline - Date.now()),
+    examStarted: deadline !== null,
   });
 });
 
@@ -227,7 +230,7 @@ app.listen(Number(PORT), '0.0.0.0', () => {
   console.log(`  Running on http://localhost:${PORT}`);
   console.log(`===================================================`);
   console.log(`  Exam ID: ${EXAM_ID}`);
-  console.log(`  Deadline: ${new Date(deadline).toISOString()} (${new Date(deadline).toLocaleString()})`);
+  console.log(`  Deadline: ${deadline === null ? 'Not yet started — will lock in on first submission' : new Date(deadline).toISOString()}`);
   console.log(`===================================================`);
   console.log(`  Relayer ready for anonymous submissions!`);
   console.log(`===================================================`);

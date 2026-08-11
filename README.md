@@ -234,7 +234,7 @@ A live `MM:SS` countdown is displayed during the exam.
 An **Admin Demo Controls** panel allows the deadline to be skipped using the secure admin key.
 
 > **Short on time while checking out the demo?**
-> You can use the Admin Demo Controls to skip the waiting period and immediately experience the reveal and grading flow. Admin passkey: demo-reset-2026
+> You can use the Admin Demo Controls to skip the waiting period and immediately experience the reveal and grading flow. Admin passkey: demo-reset-2026. Note: This ends the test for all users
 
 ---
 
